@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               MogileFS-Network
-version:            0.02
+version:            0.04
 abstract:           MogileFS Server class for representing networks based on host IPs.
 author:
     - Jonathan Steinert <hachi@cpan.org>
@@ -11,13 +11,14 @@ configure_requires:
 build_requires:
     ExtUtils::MakeMaker:  0
 requires:
-    Net::Netmask:   0
-    Net::Patricia:  0
+    MogileFS::Server:  2.50
+    Net::Netmask:      0
+    Net::Patricia:     0
 no_index:
     directory:
         - t
         - inc
-generated_by:       ExtUtils::MakeMaker version 6.55_02
+generated_by:       ExtUtils::MakeMaker version 6.56
 meta-spec:
     url:      http://module-build.sourceforge.net/META-spec-v1.4.html
     version:  1.4

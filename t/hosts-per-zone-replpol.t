@@ -10,7 +10,7 @@ use MogileFS::Util qw(error_code);
 use MogileFS::ReplicationPolicy::HostsPerNetwork;
 use MogileFS::Test;
 
-plan tests => 13;
+plan tests => 14;
 
 # already good.
 is(rr("min=2  h1[d1=X d2=_] h2[d3=X d4=_]"),
@@ -67,13 +67,19 @@ is(rr("min=2 h1[d1=X d2=X] h2[d3=X d4=_]"),
 is(rr("min=3 h1[d1=_ d2=X] h2[d3=X d4=X]"),
    "all_good");
 
+# Run a simulated rebalance/replicate where we have an avoid device.
+is(rr("min=2  h1[d1=X d2=_] h2=down[d3=_ d4=_] h3[d5=! d6=_]"),
+   "ideal(6)");
+
 sub rr {
     my ($state) = @_;
     my $ostate = $state; # original
 
-    MogileFS::Host->t_wipe_singletons;
-    MogileFS::Device->t_wipe_singletons;
+    MogileFS::Factory::Host->t_wipe;
+    MogileFS::Factory::Device->t_wipe;
     MogileFS::Config->set_config_no_broadcast("min_free_space", 100);
+    my $hfac = MogileFS::Factory::Host->get_factory;
+    my $dfac = MogileFS::Factory::Device->get_factory;
 
     my $min = 2;
     if ($state =~ s/^\bmin=(\d+)\b//) {
@@ -82,6 +88,7 @@ sub rr {
 
     my $hosts   = {};
     my $devs    = {};
+    my $candidate_devs = {};
     my $on_devs = [];
 
     my $parse_error = sub {
@@ -92,18 +99,22 @@ sub rr {
         $opts ||= "";
         die "dup host $n" if $hosts->{$n};
 
-        my $h = $hosts->{$n} = MogileFS::Host->of_hostid($n);
-        $h->t_init($opts || "alive");
-        $h->{hostip} = "127.0.0.1";
+        my $h = $hosts->{$n} = $hfac->set({ hostid => $n,
+            status => ($opts || "alive"), observed_state => "reachable",
+            hostname => $n, hostip => "127.0.0.1" });
 
         foreach my $ddecl (split(/\s+/, $devstr)) {
-            $ddecl =~ /^d(\d+)=([_X])(?:,(\w+))?$/
+            $ddecl =~ /^d(\d+)=([_X!])(?:,(\w+))?$/
                 or $parse_error->();
             my ($dn, $on_not, $status) = ($1, $2, $3);
             die "dup device $dn" if $devs->{$dn};
-            my $d = $devs->{$dn} = MogileFS::Device->of_devid($dn);
-            $status ||= "alive";
-            $d->t_init($h->id, $status);
+            my $d = $devs->{$dn} = $dfac->set({ devid => $dn,
+                hostid => $h->id, observed_state => "writeable",
+                status => ($status || "alive"), mb_total => 1000,
+                mb_used => 100, });
+            if ($on_not ne "!") { # ! means "the file isn't here, but avoid this device in the policy"
+                $candidate_devs->{$dn} = $d;
+            }
             if ($on_not eq "X" && $d->dstate->should_have_files) {
                 push @$on_devs, $d;
             }
@@ -123,7 +134,7 @@ sub rr {
     my $rr = $pol->replicate_to(
                                 fid      => 1,
                                 on_devs  => $on_devs,
-                                all_devs => $devs,
+                                all_devs => $candidate_devs, # In the case of rebalance, all_devs is all candidate devs, not strictly all devices
                                 failed   => {},
                                 min      => $min,
                                 );
