@@ -26,7 +26,7 @@ use Net::Netmask;
 use Net::Patricia;
 use MogileFS::Config;
 
-our $VERSION = "0.05";
+our $VERSION = "0.06";
 
 use constant DEFAULT_RELOAD_INTERVAL => 60;
 
@@ -100,7 +100,7 @@ sub get_setting {
     my $key = shift;
     if ($has_cached) {
         my $val = MogileFS::Config->server_setting_cached($key);
-        return $val if $val;
+        return $val;
     }
     # Fall through to the server in case we don't have a cached value yet.
     return MogileFS::Config->server_setting($key);
